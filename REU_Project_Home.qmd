@@ -1,0 +1,26 @@
+---
+title: "REU Project"
+format: html
+editor: visual
+---
+
+### Set Up
+
+```{r}
+# Read in packages
+library(dplyr)
+
+
+# Read in data
+read.csv()
+```
+
+
+## Data Wrangling
+```{r}
+# clean/filter raster precip/elevation data
+
+# clean/filter willow data
+```
+
+## Prelim visualizations
