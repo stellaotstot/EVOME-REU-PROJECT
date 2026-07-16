@@ -12,7 +12,8 @@ library(dplyr)
 
 
 # Read in data
-read.csv()
+willowdat <- read.csv("REU project test data - Sheet1.csv") %>%
+  select(-region) %>% #remove from final addition
 ```
 
 
@@ -21,6 +22,25 @@ read.csv()
 # clean/filter raster precip/elevation data
 
 # clean/filter willow data
+willowdat_clean <- willowdat %>%
+  
+  mutate(region = as.factor(case_when(
+    site %in% c("SAGW", "HAPP") ~ "NOBRO",
+    site %in% c("GALB") ~ "CEBRO",
+    site %in% c("CLAR", "DOUG") ~ "SOBRO"))) %>%
+  
+  group_by(site) %>%
+  summarise(thaw_depth = mean(thaw_depth_W_base, thaw_depth_E_base))
+
+
+willowdat_averages <- willowdat_clean %>%
+  mutate(
+    thaw_avg_2025 = (col1_2025 + col2_2025) / 2,
+    avg_2026 = (col1_2026 + col2_2026) / 2
+  )
+
+
+
 ```
 
 ## Prelim visualizations
