@@ -38,9 +38,11 @@ willowdat_averages <- willowdat_clean %>%
     thaw_avg_2025 = (col1_2025 + col2_2025) / 2,
     avg_2026 = (col1_2026 + col2_2026) / 2
   )
-
-
-
 ```
 
 ## Prelim visualizations
+
+#### Run GrowthAnalysis.R first
+
+
+
