@@ -20,7 +20,8 @@ licordat <- read.csv("~/Library/CloudStorage/GoogleDrive-sotstot@macalester.edu/
       
 results_merged <- results %>%
   left_join(licordat,
-            by = c("willow_ecology_barcode" = "Barcode.Number"))
+            by = c("willow_ecology_barcode" = "Barcode.Number")) %>%
+  filter(Year.of.Growth == 2025)
 
 ##### many duplicates in licor dat, multiple leaves??? how do i know which ones to keep/filter out/ join?
 
@@ -28,7 +29,7 @@ results_merged <- results %>%
 results_merged %>%
   ggplot(aes(x = Vcmax, 
              y = log(total_dry_mass/total_fresh_length), 
-             group = willow_ecology_barcode, 
+             #group = willow_ecology_barcode, 
              color = species)) +
   geom_point() +
   xlab("Vcmax") +

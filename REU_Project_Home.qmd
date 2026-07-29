@@ -9,40 +9,565 @@ editor: visual
 ```{r}
 # Read in packages
 library(dplyr)
-
-
-# Read in data
-willowdat <- read.csv("REU project test data - Sheet1.csv") %>%
-  select(-region) %>% #remove from final addition
+library(stats)
+library(multcompView)
+library(ggpubr)
+library(broom)
+library(purrr)
 ```
 
 
 ## Data Wrangling
 ```{r}
-# clean/filter raster precip/elevation data
+# See GrowthAnalysis.R
+```
 
-# clean/filter willow data
-willowdat_clean <- willowdat %>%
-  
-  mutate(region = as.factor(case_when(
-    site %in% c("SAGW", "HAPP") ~ "NOBRO",
-    site %in% c("GALB") ~ "CEBRO",
-    site %in% c("CLAR", "DOUG") ~ "SOBRO"))) %>%
-  
-  group_by(site) %>%
-  summarise(thaw_depth = mean(thaw_depth_W_base, thaw_depth_E_base))
+## Analysis
+```{r}
+#alaxensis
+salala_anova_model <- aov(log(total_dry_mass/total_fresh_length) ~ site, data = filter(results, Year.of.Growth == 2025, species == "salix_alaxensis"))
+salala_tuk <- TukeyHSD(salala_anova_model)
+salala_letters <- multcompLetters4(salala_anova_model, salala_tuk)
+salala_cld_df <- data.frame(site = names(salala_letters$site$Letters),
+                     Letters = salala_letters$site$Letters)
+salala_cld_df
 
+#pulchra
+salpul_anova_model <- aov(log(total_dry_mass/total_fresh_length) ~ site, data = filter(results, Year.of.Growth == 2025, species == "salix_pulchra"))
+salpul_tuk <- TukeyHSD(salpul_anova_model)
+salpul_letters <- multcompLetters4(salpul_anova_model, salpul_tuk)
+salpul_cld_df <- data.frame(site = names(salpul_letters$site$Letters),
+                     Letters = salpul_letters$site$Letters)
+salpul_cld_df
+```
 
-willowdat_averages <- willowdat_clean %>%
-  mutate(
-    thaw_avg_2025 = (col1_2025 + col2_2025) / 2,
-    avg_2026 = (col1_2026 + col2_2026) / 2
+### Prep tukey for plot
+```{r}
+letter_df <- bind_rows(
+
+  salala_cld_df %>%
+    mutate(species = "salix_alaxensis"),
+
+  salpul_cld_df %>%
+    mutate(species = "salix_pulchra")
+
+) %>%
+  left_join(
+
+    results %>%
+      filter(
+        Year.of.Growth == 2025,
+        !is.na(total_dry_mass),
+        !is.na(total_fresh_length),
+        total_fresh_length > 0
+      ) %>%
+      mutate(
+        growth = log(total_dry_mass / total_fresh_length)
+      ) %>%
+      group_by(site, species, region) %>%
+      summarise(
+        y = max(growth, na.rm = TRUE) + 0.12,
+        .groups = "drop"
+      ),
+
+    by = c("site", "species")
+
   )
 ```
 
-## Prelim visualizations
-
-#### Run GrowthAnalysis.R first
 
 
+## Final Graphs
 
+### Set up aesthetics
+```{r}
+my_theme <- theme_minimal() +
+  theme(
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    legend.title = element_text(size = 20),
+    legend.text = element_text(size = 20),
+    strip.text = element_text(size = 20))
+
+my_colors <- scale_color_manual(
+  values = c(
+    "salix_alaxensis" = "darkgreen",
+    "salix_pulchra" = "lightgreen"),
+  labels = c(
+    "salix_alaxensis" = "Salix alaxensis",
+    "salix_pulchra" = "Salix pulchra"),
+  name = "Species")
+
+my_fill <- scale_fill_manual(
+  values = c(
+    "salix_alaxensis" = "darkgreen",
+    "salix_pulchra" = "lightgreen"
+  ),
+  labels = c(
+    "salix_alaxensis" = "Salix alaxensis",
+    "salix_pulchra" = "Salix pulchra"
+  ),
+  name = "Species"
+)
+```
+
+### Generate Plots
+```{r}
+p1 <- results %>%
+  filter(
+    Year.of.Growth == 2025,
+    !is.na(total_dry_mass),
+    !is.na(total_fresh_length),
+    total_fresh_length > 0
+  ) %>%
+  mutate(site = forcats::fct_drop(site)) %>%
+  ggplot(aes(
+    x = site,
+    y = log(total_dry_mass / total_fresh_length),
+    color = species
+  )) +
+  geom_boxplot(linewidth = 1.15) +
+  facet_wrap(~region, scales = "free_x") +
+  scale_x_discrete(drop = TRUE) +
+  my_colors +
+  my_theme +
+  xlab("Site") +
+  ylab("Log(dry mass / fresh length)")
+p1
+
+p2 <- results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(
+    x = species,
+    y = log(total_dry_mass / total_fresh_length),
+    fill = species
+  )) +
+  geom_boxplot() +
+  my_fill +
+  my_theme +
+  xlab("Species") +
+  ylab("Log(dry mass / fresh length)")
+p2
+
+
+p3 <- results_weather %>%
+  filter(
+    !is.na(species),
+    !is.na(total_dry_mass),
+    !is.na(total_fresh_length),
+    !is.na(av_min_temp)
+  ) %>%
+  ggplot(aes(
+    x = av_min_temp,
+    y = log(total_dry_mass / total_fresh_length),
+    color = species
+  )) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", se = TRUE) +
+  my_colors +
+  my_theme +
+  xlab("Average Minimum Temperature (°C)") +
+  ylab("Log(dry mass / fresh length)")
+p3
+
+p4 <- results_weather %>%
+  filter(
+    !is.na(species),
+    !is.na(total_dry_mass),
+    !is.na(total_fresh_length),
+    !is.na(av_light)
+  ) %>%
+  ggplot(aes(
+    x = av_light,
+    y = log(total_dry_mass / total_fresh_length),
+    color = species
+  )) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", se = TRUE) +
+  my_colors +
+  my_theme +
+  xlab("Average Light") +
+  ylab("Log(dry mass / fresh length)")
+p4
+
+p5 <- results %>%
+  filter(
+    Year.of.Growth == 2025,
+    !is.na(species),
+    !is.na(total_dry_mass),
+    !is.na(total_fresh_length),
+    !is.na(latitude)
+  ) %>%
+  ggplot(aes(
+    x = latitude,
+    y = log(total_dry_mass / total_fresh_length),
+    color = species
+  )) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", se = TRUE) +
+  my_colors +
+  my_theme +
+  xlab("Latitude") +
+  ylab("Log(dry mass / fresh length)")
+p5
+```
+
+### Saving Plots
+```{r}
+ggsave("growth by site, species, region.png",
+       plot = p1,
+       width = 15,
+       height = 10,
+       dpi = 300)
+
+ggsave("growth by species.png",
+       plot = p2,
+       width = 15,
+       height = 10,
+       dpi = 300)
+
+ggsave("growth by min temp.png",
+       plot = p3,
+       width = 15,
+       height = 10,
+       dpi = 300)
+
+ggsave("growth by light.png",
+       plot = p4,
+       width = 15,
+       height = 10,
+       dpi = 300)
+
+ggsave("growth by latitude.png",
+       plot = p5,
+       width = 15,
+       height = 10,
+       dpi = 300)
+```
+
+
+### Regression Table
+```{r}
+temp_table <- results_weather %>%
+  mutate(growth = log(total_dry_mass / total_fresh_length)) %>%
+  filter(
+    !is.na(species),
+    !is.na(growth),
+    !is.na(av_min_temp)
+  ) %>%
+  group_by(species) %>%
+  do({
+    fit <- lm(growth ~ av_min_temp, data = .)
+
+    tibble(
+      Intercept = round(coef(fit)[1], 3),
+      Slope = round(coef(fit)[2], 3),
+      R2 = round(summary(fit)$r.squared, 3),
+      P_value = signif(summary(fit)$coefficients[2, 4], 3),
+      N = nrow(.)
+    )
+  }) %>%
+  mutate(Plot = "Average Minimum Temperature")
+
+light_table <- results_weather %>%
+  mutate(
+    growth = log(total_dry_mass / total_fresh_length),
+    av_light_1000 = av_light / 1000
+  ) %>%
+  filter(
+    !is.na(species),
+    !is.na(growth),
+    !is.na(av_light_1000)
+  ) %>%
+  group_by(species) %>%
+  do({
+    fit <- lm(growth ~ av_light_1000, data = .)
+
+    tibble(
+      Intercept = round(coef(fit)[1], 3),
+      Slope = round(coef(fit)[2], 3),
+      R2 = round(summary(fit)$r.squared, 3),
+      P_value = signif(summary(fit)$coefficients[2, 4], 3),
+      N = nrow(.)
+    )
+  }) %>%
+  mutate(Plot = "Average Light (per 1000 units)")
+
+lat_table <- results %>%
+  filter(Year.of.Growth == 2025) %>%
+  mutate(growth = log(total_dry_mass / total_fresh_length)) %>%
+  filter(
+    !is.na(species),
+    !is.na(growth),
+    !is.na(latitude)
+  ) %>%
+  group_by(species) %>%
+  do({
+    fit <- lm(growth ~ latitude, data = .)
+
+    tibble(
+      Intercept = round(coef(fit)[1], 3),
+      Slope = round(coef(fit)[2], 3),
+      R2 = round(summary(fit)$r.squared, 3),
+      P_value = signif(summary(fit)$coefficients[2, 4], 3),
+      N = nrow(.)
+    )
+  }) %>%
+  mutate(Plot = "Latitude")
+
+regression_table <- bind_rows(
+  temp_table,
+  light_table,
+  lat_table
+)
+
+regression_table
+```
+
+## Extra Visualizations
+
+### Prelim
+```{r}
+# canopy height
+results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(x = height_m, color = species)) +
+  geom_density() +
+  theme_minimal()
+
+# canopy area
+results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(x = ((canopy_width_m + canopy_length_m)/2)^2, color = species)) +
+  geom_density() +
+  theme_minimal()
+
+# thaw
+results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(x = thaw_base, color = species)) +
+  geom_density() +
+  theme_minimal()
+
+results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(x = thaw_canopy, color = species)) +
+  geom_density() +
+  theme_minimal()
+
+results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(x = thaw_canopy, y = thaw_base)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color = "black", linetype = "dashed")
+  
+```
+
+
+### Box plots
+```{r}
+# alaxensis
+results %>%
+filter(Year.of.Growth == 2025, species == "salix_alaxensis") %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), color = site)) +
+  geom_boxplot() +
+  facet_wrap(~ region) +
+  theme_minimal() +
+  ylab("Salix Alaxensis log ( mass / length ) 2025")
+
+# pulchra
+results %>%
+filter(Year.of.Growth == 2025, species == "salix_pulchra") %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), color = site)) +
+  geom_boxplot() +
+  facet_wrap(~ region) +
+  theme_minimal() +
+  ylab("Salix Pulchra log ( mass / length ) 2025")
+
+# both
+results %>%
+filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), color = site)) +
+  geom_boxplot() +
+  facet_wrap(~ region) +
+  theme_minimal() +
+  ylab("Broad Trends log ( mass / length ) 2025")
+
+results %>%
+filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = species)) +
+  geom_boxplot() +
+  theme_minimal() +
+  ylab("Salix Alaxensis log ( mass / length ) 2025")
+
+```
+
+### Environmental Vars with 2026 Field Data
+```{r}
+results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = thaw_base, color = species)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ region)
+ 
+results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = thaw_canopy, color = species)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ region) 
+
+results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = thaw_canopy, color = species)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+
+results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = moisture_canopy, color = species)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+
+results %>%
+  filter(Year.of.Growth == 2025) %>%
+  ggplot(aes(y = (total_dry_mass/total_fresh_length), x = latitude)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~ species) +
+  theme_minimal()
+```
+
+### Environmental Vars with Enviro 2025 Data
+```{r}
+### without p/R
+results_weather %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = av_temp)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_minimal() +
+  xlab("Average Temperature") +
+  ylab("log ( mass / length )")
+
+results_weather %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = av_min_temp)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_minimal() +
+  xlab("Average Minimun Temperature") +
+  ylab("log ( mass / length )")
+
+results_weather %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = av_max_temp)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_minimal() +
+  xlab("Average Maximum Temperature") +
+  ylab("log ( mass / length )")
+
+results_weather %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = av_light)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_minimal() +
+  xlab("Average Light") +
+  ylab("log ( mass / length )")
+
+
+### with p/R
+results_weather %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = av_temp)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  stat_regline_equation() +
+  stat_cor(
+    method = "pearson",
+    #label.x = 11,
+    label.y = -2.8
+  ) +
+  theme_minimal() +
+  xlab("Average Temperature") +
+  ylab("log ( mass / length )")
+
+results_weather %>%
+  ggplot(aes(y = log(total_dry_mass/total_fresh_length), x = av_min_temp)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", se = TRUE) +
+  stat_regline_equation(
+  aes(label = after_stat(eq.label)),
+  size = 7
+) +
+  stat_cor(
+    method = "pearson",
+    label.y = -2.8,
+    size = 7
+  ) +
+  theme_minimal() +
+  xlab("Average Minimum Temperature") +
+  ylab("log ( mass / length )") +
+  theme_minimal() +
+  theme(axis.text = element_text(size = 20),
+        axis.title = element_text(size = 20),
+        legend.title = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        strip.text = element_text(size = 20))
+```
+
+```{r}
+p1_extra <- results %>%
+  filter(
+    Year.of.Growth == 2025,
+    !is.na(total_dry_mass),
+    !is.na(total_fresh_length),
+    total_fresh_length > 0
+  ) %>%
+  mutate(
+    site = forcats::fct_drop(site),
+    growth = log(total_dry_mass / total_fresh_length)
+  ) %>%
+  ggplot(aes(
+    x = site,
+    y = growth,
+    color = species
+  )) +
+
+  geom_boxplot(
+    linewidth = 1.15,
+    width = 0.7,
+    position = position_dodge(width = 0.75),
+    outlier.shape = NA
+  ) +
+
+  geom_jitter(
+    position = position_jitterdodge(
+      jitter.width = 0.15,
+      dodge.width = 0.75
+    ),
+    alpha = 0.5,
+    size = 1.8
+  ) +
+
+  geom_text(
+    data = letter_df,
+    aes(
+      x = site,
+      y = y,
+      label = Letters,
+      color = species
+    ),
+    position = position_dodge(width = 0.75),
+    size = 6,
+    fontface = "bold",
+    show.legend = FALSE
+  ) +
+
+  facet_wrap(~region, scales = "free_x") +
+
+  scale_x_discrete(drop = TRUE) +
+
+  my_colors +
+  my_theme +
+
+  xlab("Site") +
+  ylab("Log(dry mass / fresh length)")

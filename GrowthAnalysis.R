@@ -68,6 +68,13 @@ results <- results %>%
     site = factor(site, levels = c("FISH", "DOUG", "GRAY", "CLAR", "NUGG", "CHAN", "GALB", "HERS", "TOOL", "UOKS", "LOKS", "RUDY", "DANC", "HAPP", "MILK", "CHRI", "SAGW"))
   )
 
+#filtering/nas
+results$thaw_base[results$thaw_base == 999] <- NA
+results$thaw_canopy[results$thaw_canopy == 999] <- NA
+
+results <- results %>%
+  mutate(latitude = as.numeric(substr(latlong, 1, 8)))
+
 #Plot differences in growth by species
 results %>%
   ggplot()+
